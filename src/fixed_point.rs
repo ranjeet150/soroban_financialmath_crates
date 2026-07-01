@@ -33,3 +33,14 @@ pub const WAD: i128 = 1_000_000_000_000_000_000;
 /// from MakerDAO's 1e45.
 pub const RAD: i128 = 1_000_000_000_000_000_000_000_000_000_000_000_000;
 
+/// Upper bound accepted by [`scale_to`] / [`scale_from`] — decimal places
+/// beyond this would overflow `i128` for any realistic token amount.
+pub const MAX_SCALE: u32 = 36;
+
+/// A fixed-point number scaled by 1e18 (18 decimal places).
+///
+/// This is the default working precision for token amounts, prices, and
+/// spending-limit thresholds throughout the workspace.
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq, PartialOrd, Ord, Hash)]
+pub struct Wad(pub i128);
+
