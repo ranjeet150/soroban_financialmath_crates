@@ -179,3 +179,70 @@ impl Rad {
     }
 }
 
+impl From<i128> for Wad {
+    fn from(raw: i128) -> Self {
+        Wad(raw)
+    }
+}
+
+impl From<Wad> for i128 {
+    fn from(w: Wad) -> Self {
+        w.0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scale_up_and_down_round_trip_within_precision() {
+        // 1.0 at 6 decimals (USDC-style) -> 18 decimals -> back to 6.
+        let raw_usdc = 1_000_000i128;
+        let wad = Wad::from_scaled(raw_usdc, 6).unwrap();
+        assert_eq!(wad.0, WAD);
+        let back = wad.to_scaled(6).unwrap();
+        assert_eq!(back, raw_usdc);
+    }
+
+    #[test]
+    fn downscaling_truncates_rather_than_rounds() {
+        // 1.999999 wad-scaled down to 0 decimals must truncate to 1, not
+        // round to 2.
+        let wad = Wad(1_999_999_000_000_000_000);
+        assert_eq!(wad.to_scaled(0).unwrap(), 1);
+    }
+
+    #[test]
+    fn mul_and_div_are_inverse_for_nonzero_operands() {
+        let a = Wad::from_raw(3 * WAD);
+        let b = Wad::from_raw(2 * WAD);
+        let product = a.checked_mul(b).unwrap();
+        assert_eq!(product.0, 6 * WAD);
+        let quotient = product.checked_div(b).unwrap();
+        assert_eq!(quotient.0, a.0);
+    }
+
+    #[test]
+    fn div_by_zero_is_rejected() {
+        let a = Wad::ONE;
+        assert_eq!(a.checked_div(Wad::ZERO), Err(MathError::DivisionByZero));
+    }
+
+    #[test]
+    fn wide_multiplication_round_trips_through_rad() {
+        let a = Wad::from_raw(5 * WAD);
+        let b = Wad::ONE;
+        let rad = a.checked_mul_wide(b).unwrap();
+        assert_eq!(rad.0, 5 * RAD); // 5.0 * 1.0 at 36-decimal scale
+        assert_eq!(rad.to_wad().unwrap(), a);
+    }
+
+    #[test]
+    fn invalid_scale_is_rejected() {
+        assert_eq!(
+            scale_to(1, 0, MAX_SCALE + 1),
+            Err(MathError::InvalidScale)
+        );
+    }
+}
