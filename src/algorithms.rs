@@ -166,3 +166,29 @@ pub fn geometric_mean(values: &[Wad]) -> Result<Wad, MathError> {
     todo!("Compose ln/exp to compute the geometric mean without overflowing i128 — see doc-comment")
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sqrt_rejects_negative_input() {
+        assert_eq!(sqrt(Wad::from_raw(-1)), Err(MathError::NegativeInput));
+    }
+
+    #[test]
+    fn ln_rejects_non_positive_input() {
+        assert_eq!(ln(Wad::ZERO), Err(MathError::OutOfDomain));
+        assert_eq!(ln(Wad::from_raw(-1)), Err(MathError::OutOfDomain));
+    }
+
+    #[test]
+    fn geometric_mean_rejects_empty_slice() {
+        assert_eq!(geometric_mean(&[]), Err(MathError::OutOfDomain));
+    }
+
+    #[test]
+    fn geometric_mean_rejects_non_positive_element() {
+        let values = [Wad::ONE, Wad::ZERO];
+        assert_eq!(geometric_mean(&values), Err(MathError::OutOfDomain));
+    }
+}
