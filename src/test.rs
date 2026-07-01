@@ -63,3 +63,31 @@ fn sqrt_of_four_is_two() {
     assert_eq!(result, 2 * WAD);
 }
 
+#[test]
+#[ignore = "algorithms::ln is an open contributor issue"]
+fn ln_of_one_is_zero() {
+    let client = setup();
+    const WAD: i128 = 1_000_000_000_000_000_000;
+    let result = client.ln(&WAD);
+    assert_eq!(result, 0);
+}
+
+#[test]
+#[ignore = "algorithms::exp is an open contributor issue"]
+fn exp_of_zero_is_one() {
+    let client = setup();
+    const WAD: i128 = 1_000_000_000_000_000_000;
+    let result = client.exp(&0i128);
+    assert_eq!(result, WAD);
+}
+
+#[test]
+#[ignore = "algorithms::geometric_mean is an open contributor issue"]
+fn geometric_mean_of_matching_values_is_that_value() {
+    let client = setup();
+    const WAD: i128 = 1_000_000_000_000_000_000;
+    let env = Env::default();
+    let values = vec![&env, 4 * WAD, 4 * WAD];
+    let result = client.geometric_mean(&values);
+    assert_eq!(result, 4 * WAD);
+}
