@@ -87,3 +87,95 @@ fn pow10(exp: u32) -> Result<i128, MathError> {
     10i128.checked_pow(exp).ok_or(MathError::Overflow)
 }
 
+impl Wad {
+    /// The additive identity, `0.0`.
+    pub const ZERO: Wad = Wad(0);
+    /// The multiplicative identity, `1.0`.
+    pub const ONE: Wad = Wad(WAD);
+
+    /// Wraps a raw, already-scaled `i128` as a `Wad`.
+    pub const fn from_raw(raw: i128) -> Self {
+        Wad(raw)
+    }
+
+    /// Builds a `Wad` from an integer amount expressed at `decimals`
+    /// precision (e.g. `Wad::from_scaled(1_000_000, 6)` for `1.0` USDC).
+    pub fn from_scaled(amount: i128, decimals: u32) -> Result<Self, MathError> {
+        scale_to(amount, decimals, 18).map(Wad)
+    }
+
+    /// Converts this `Wad` down to a raw integer amount at `decimals`
+    /// precision, truncating any precision beyond `decimals`.
+    pub fn to_scaled(self, decimals: u32) -> Result<i128, MathError> {
+        scale_to(self.0, 18, decimals)
+    }
+
+    /// Checked addition.
+    pub fn checked_add(self, rhs: Wad) -> Result<Wad, MathError> {
+        self.0.checked_add(rhs.0).map(Wad).ok_or(MathError::Overflow)
+    }
+
+    /// Checked subtraction.
+    pub fn checked_sub(self, rhs: Wad) -> Result<Wad, MathError> {
+        self.0.checked_sub(rhs.0).map(Wad).ok_or(MathError::Underflow)
+    }
+
+    /// Checked fixed-point multiplication: `(self * rhs) / WAD`.
+    ///
+    /// Widens to [`Rad`] internally (via [`Wad::checked_mul_wide`]) so the
+    /// intermediate product never overflows `i128` prematurely, then
+    /// rescales back down.
+    pub fn checked_mul(self, rhs: Wad) -> Result<Wad, MathError> {
+        self.checked_mul_wide(rhs)?.to_wad()
+    }
+
+    /// Checked fixed-point division: `(self * WAD) / rhs`.
+    pub fn checked_div(self, rhs: Wad) -> Result<Wad, MathError> {
+        if rhs.0 == 0 {
+            return Err(MathError::DivisionByZero);
+        }
+        let scaled = self.0.checked_mul(WAD).ok_or(MathError::Overflow)?;
+        Ok(Wad(scaled / rhs.0))
+    }
+
+    /// Multiplies two `Wad`s without reducing the result back down,
+    /// yielding a full-precision [`Rad`] (18 + 18 = 36 decimals). Useful
+    /// when the caller needs to accumulate several `Wad * Wad` products
+    /// before losing precision to a single final [`Rad::to_wad`] call.
+    pub fn checked_mul_wide(self, rhs: Wad) -> Result<Rad, MathError> {
+        self.0.checked_mul(rhs.0).map(Rad).ok_or(MathError::Overflow)
+    }
+
+    /// True if the underlying value is exactly zero.
+    pub fn is_zero(self) -> bool {
+        self.0 == 0
+    }
+}
+
+impl Rad {
+    /// The additive identity, `0.0`.
+    pub const ZERO: Rad = Rad(0);
+
+    /// Wraps a raw, already-scaled `i128` as a `Rad`.
+    pub const fn from_raw(raw: i128) -> Self {
+        Rad(raw)
+    }
+
+    /// Checked addition.
+    pub fn checked_add(self, rhs: Rad) -> Result<Rad, MathError> {
+        self.0.checked_add(rhs.0).map(Rad).ok_or(MathError::Overflow)
+    }
+
+    /// Checked subtraction.
+    pub fn checked_sub(self, rhs: Rad) -> Result<Rad, MathError> {
+        self.0.checked_sub(rhs.0).map(Rad).ok_or(MathError::Underflow)
+    }
+
+    /// Narrows this `Rad` back down to a [`Wad`], truncating the extra
+    /// 1e18 of precision. This is the standard point at which an
+    /// accumulator is "settled" back into a spendable/storable amount.
+    pub fn to_wad(self) -> Result<Wad, MathError> {
+        scale_to(self.0, 36, 18).map(Wad)
+    }
+}
+
