@@ -39,3 +39,53 @@ the contract via the Soroban CLI (`stellar contract deploy`, etc.), see the
 
 ## Coding conventions
 
+These are enforced in review, not by CI alone, so please self-check before
+requesting review:
+
+- **No floating point, anywhere.** Not `f32`, not `f64`, not as an
+  intermediate step "just to check the answer" left in committed code.
+  Soroban's determinism guarantee depends on every validator computing the
+  identical result, and float rounding is not guaranteed identical across
+  implementations. If you need floats to sanity-check your fixed-point
+  implementation while developing, do that in a scratch script or a
+  `#[cfg(test)]`-only helper that never runs in the Wasm build — not in the
+  algorithm body itself.
+- **Every fallible path returns `Result<T, MathError>`.** Never `panic!`,
+  `unwrap()`, or `expect()` inside `fixed_point.rs` or `algorithms.rs`
+  (the `#[contract]` wrapper in `lib.rs` is the one place `unwrap_or_else`
+  + `panic_with_error!` is expected, since that's the Soroban-idiomatic way
+  to surface an error at the host boundary). If your algorithm hits a new
+  failure mode not already covered by [`MathError`](src/errors.rs), add a
+  variant rather than overloading an existing one — see that file's
+  doc-comments for the existing taxonomy and pick a discriminant one higher
+  than the current maximum.
+- **Checked arithmetic only.** Use `checked_add`/`checked_mul`/etc. (or the
+  `Wad`/`Rad` checked methods already provided) — never bare `+`/`*` on the
+  underlying `i128`, even when you're confident it can't overflow. The
+  confidence is usually wrong at some input boundary, and the checked form
+  costs nothing at this precision.
+- **Match the existing doc-comment style.** Public functions document their
+  target algorithm/formula, not just their signature, and enumerate every
+  `# Errors` variant they can return. Look at `sqrt`/`ln`/`exp` in
+  `algorithms.rs` for the expected level of detail even while their bodies
+  are still `todo!()`.
+- **No unrelated formatting churn.** Run `cargo fmt` on files you actually
+  touched; don't reformat files you didn't otherwise change.
+
+## Testing requirements
+
+- Every algorithm you implement needs unit tests in the same file
+  (`#[cfg(test)] mod tests` at the bottom of `algorithms.rs`, following the
+  existing pattern) covering: a known-good value, the domain boundary
+  (e.g. `ln(x)` at `x` just above zero), and every documented error
+  condition.
+- Remove the `#[ignore = "..."]` attribute from the corresponding
+  integration test in [`src/test.rs`](src/test.rs) and fill in the real
+  expected value once your implementation is in — that test currently
+  exists specifically as your target.
+- Run `cargo test` (not just `cargo check`) before opening a PR. All
+  existing tests must still pass; don't loosen or delete a test to make
+  your change pass unless you can explain why the old assertion was wrong.
+
+## PR checklist
+
