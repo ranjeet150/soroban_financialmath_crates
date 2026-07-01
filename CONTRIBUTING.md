@@ -89,3 +89,32 @@ requesting review:
 
 ## PR checklist
 
+- [ ] Linked to (or created) the tracking issue
+- [ ] Implementation matches the doc-comment's specified algorithm and
+      error conditions, or the doc-comment was updated to match a
+      deliberate, discussed deviation
+- [ ] New/updated unit tests in `algorithms.rs`, covering domain boundaries
+      and error paths
+- [ ] Corresponding `#[ignore]` removed from `src/test.rs` with real
+      assertions
+- [ ] `cargo test` passes locally
+- [ ] `cargo build --target wasm32-unknown-unknown --release` succeeds
+- [ ] No floating-point types introduced
+- [ ] No new `unwrap()`/`expect()`/`panic!()` outside the `#[contract]`
+      wrapper in `lib.rs`
+
+## Commit / PR style
+
+- Commit messages: imperative mood, explain *why* over *what* where it's
+  not obvious from the diff (e.g. "Use Newton-Raphson seed from
+  leading_zeros to cut iteration count" rather than "update sqrt").
+- Keep the PR description focused on: what algorithm/bug this addresses,
+  what testing you did, and any deliberate deviation from the doc-comment
+  spec.
+
+## Getting help
+
+If you're unsure about an approach before investing the time to implement
+it, open a draft PR or a discussion issue describing your plan — that's
+much cheaper for everyone than a full implementation that needs to be
+redesigned in review.
