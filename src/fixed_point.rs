@@ -44,3 +44,46 @@ pub const MAX_SCALE: u32 = 36;
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq, PartialOrd, Ord, Hash)]
 pub struct Wad(pub i128);
 
+/// A fixed-point number scaled by 1e36 (36 decimal places) — the natural,
+/// unreduced result of multiplying two [`Wad`]s together without losing
+/// precision to premature truncation.
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq, PartialOrd, Ord, Hash)]
+pub struct Rad(pub i128);
+
+/// Converts a raw integer amount at `from_decimals` precision into a raw
+/// integer amount at `to_decimals` precision.
+///
+/// This is the primitive underlying every `Wad`/`Rad` conversion and is
+/// also useful standalone for normalizing token amounts that carry
+/// different `decimals()` (e.g. a 6-decimal USDC-style asset feeding into
+/// 18-decimal internal accounting).
+///
+/// # Errors
+/// - [`MathError::InvalidScale`] if either decimal count exceeds
+///   [`MAX_SCALE`].
+/// - [`MathError::Overflow`] if scaling up would exceed `i128::MAX`.
+pub fn scale_to(amount: i128, from_decimals: u32, to_decimals: u32) -> Result<i128, MathError> {
+    if from_decimals > MAX_SCALE || to_decimals > MAX_SCALE {
+        return Err(MathError::InvalidScale);
+    }
+
+    if to_decimals >= from_decimals {
+        let diff = to_decimals - from_decimals;
+        let factor = pow10(diff)?;
+        amount.checked_mul(factor).ok_or(MathError::Overflow)
+    } else {
+        let diff = from_decimals - to_decimals;
+        let factor = pow10(diff)?;
+        // Integer division truncates toward zero, which is the correct,
+        // conservative direction for downscaling on-chain balances (never
+        // manufacture value that wasn't there).
+        Ok(amount / factor)
+    }
+}
+
+/// Computes `10^exp` as an `i128`, guarding against overflow for
+/// out-of-range exponents.
+fn pow10(exp: u32) -> Result<i128, MathError> {
+    10i128.checked_pow(exp).ok_or(MathError::Overflow)
+}
+
