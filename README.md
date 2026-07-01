@@ -99,3 +99,29 @@ value right now. Each has a full doc-comment in
 required range-reduction steps, and exact error conditions — read that
 before opening a PR.
 
+| Function | File | Suggested difficulty | What's involved |
+|---|---|---|---|
+| `sqrt` | `src/algorithms.rs` | **Medium** | Newton-Raphson iteration over the `Wad` domain |
+| `geometric_mean` | `src/algorithms.rs` | **Medium** | Mostly wiring: composes `ln`/`exp`, plus a small-`n` fast path |
+| `ln` | `src/algorithms.rs` | **High** | Range reduction (`ln(x) = k·ln(2) + ln(m)`) + Taylor series + error bounding |
+| `exp` | `src/algorithms.rs` | **High** | Range reduction (`exp(x) = 2^k · exp(r)`) + Taylor series + overflow guarding |
+
+Each has a matching `#[ignore]`d integration test in
+[`src/test.rs`](src/test.rs) sketching the expected input/output — remove the
+`#[ignore]` and fill in the assertions once your implementation lands.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow, coding
+conventions, and PR checklist.
+
+## Safety notes for reviewers
+
+- `overflow-checks = true` is set explicitly in the `[profile.release]`
+  section of `Cargo.toml` and must never be removed — this crate's entire
+  safety argument rests on overflow being a hard error, not a silent wrap.
+- No `unsafe` is used or expected to be needed anywhere in this crate.
+- Floating-point types (`f32`/`f64`) must never appear in `fixed_point.rs`
+  or `algorithms.rs` — see [Why this design](#why-this-design) above.
+
+## License
+
+Apache-2.0 — see [LICENSE](LICENSE).
