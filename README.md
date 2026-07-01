@@ -74,3 +74,28 @@ cargo build --target wasm32-unknown-unknown --release
 As a library dependency (the common case — most contracts will want the
 Rust types directly rather than going through the host contract wrapper):
 
+```rust
+use soroban_financial_math::fixed_point::Wad;
+
+let price = Wad::from_scaled(1_500_000, 6)?;  // 1.5, expressed at 6 decimals
+let quantity = Wad::from_raw(2 * soroban_financial_math::fixed_point::WAD); // 2.0
+
+let notional = price.checked_mul(quantity)?; // checked, no silent overflow
+```
+
+Or as a standalone deployed contract, invoked like any other Soroban
+contract:
+
+```rust
+let client = FinancialMathContractClient::new(&env, &contract_id);
+let scaled = client.scale(&1_000_000, &6, &18); // USDC-style 6dp -> 18dp
+```
+
+## Open Issues
+
+These four functions are the primary place external contributors can add
+value right now. Each has a full doc-comment in
+[`src/algorithms.rs`](src/algorithms.rs) explaining the target algorithm,
+required range-reduction steps, and exact error conditions — read that
+before opening a PR.
+
