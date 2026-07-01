@@ -68,3 +68,34 @@ pub fn sqrt(input: Wad) -> Result<Wad, MathError> {
     todo!("Newton-Raphson sqrt over the Wad domain — see doc-comment for the target algorithm")
 }
 
+/// Computes the natural logarithm `ln(input)` of a [`Wad`]-scaled value,
+/// itself returned as a signed `Wad` (since `ln` is negative for
+/// `0 < input < 1.0`).
+///
+/// # Target algorithm
+/// Direct Taylor expansion of `ln(1 + z) = z - z^2/2 + z^3/3 - ...` only
+/// converges quickly for `z` close to `0`, so a **range reduction** step is
+/// required first:
+/// 1. Factor `input = 2^k * m` where `m` is normalized into `[1, 2)` — for
+///    fixed-point this means repeatedly halving/doubling the raw mantissa
+///    while tracking `k`, rather than using floating-point `frexp`.
+/// 2. Apply the identity `ln(input) = k * ln(2) + ln(m)`, where `ln(2)` is
+///    a precomputed `Wad` constant baked in at `Wad` precision.
+/// 3. Compute `ln(m)` via the Taylor series above (or the faster-converging
+///    `ln(m) = 2 * atanh((m-1)/(m+1))` series), summing terms in `i128`
+///    fixed-point arithmetic until the term magnitude drops below 1 ULP or
+///    [`MAX_ITERATIONS`] is reached.
+///
+/// # Errors
+/// - [`MathError::OutOfDomain`] if `input.0 <= 0` (logarithm undefined for
+///   non-positive reals).
+/// - [`MathError::ConvergenceFailure`] if the Taylor series does not reach
+///   ULP-level precision within [`MAX_ITERATIONS`] terms.
+pub fn ln(input: Wad) -> Result<Wad, MathError> {
+    if input.0 <= 0 {
+        return Err(MathError::OutOfDomain);
+    }
+    let _ = MAX_ITERATIONS;
+    todo!("Range-reduced Taylor series ln(x) over the Wad domain — see doc-comment for the target algorithm")
+}
+
