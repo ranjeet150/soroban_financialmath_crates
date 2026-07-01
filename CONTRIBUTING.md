@@ -24,3 +24,18 @@ first understanding the whole codebase. This document explains how.
 
 ## Development setup
 
+```bash
+git clone <your-fork-url>
+cd soroban-financial-math
+rustup target add wasm32-unknown-unknown   # rust-toolchain.toml pins this
+cargo test                                  # pure-Rust + Env-based tests
+cargo build --target wasm32-unknown-unknown --release   # the deployable artifact
+```
+
+No other tooling is required to get started. If you also want to exercise
+the contract via the Soroban CLI (`stellar contract deploy`, etc.), see the
+[Soroban CLI docs](https://developers.stellar.org/docs/tools/developer-tools#cli)
+— that's optional for algorithm-only contributions.
+
+## Coding conventions
+
