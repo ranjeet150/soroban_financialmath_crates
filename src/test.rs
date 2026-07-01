@@ -47,3 +47,19 @@ fn wad_div_by_zero_panics_through_the_host_boundary() {
     client.wad_div(&1_000_000_000_000_000_000i128, &0i128);
 }
 
+// --- Contributor-facing algorithm placeholders -----------------------------
+//
+// `sqrt`, `ln`, `exp`, and `geometric_mean` currently panic via `todo!()`
+// (see `algorithms.rs`). These tests are marked `#[ignore]` so CI stays
+// green; once an issue lands an implementation, remove the `#[ignore]` and
+// fill in the expected value at `Wad` (1e18) precision.
+
+#[test]
+#[ignore = "algorithms::sqrt is an open contributor issue"]
+fn sqrt_of_four_is_two() {
+    let client = setup();
+    const WAD: i128 = 1_000_000_000_000_000_000;
+    let result = client.sqrt(&(4 * WAD));
+    assert_eq!(result, 2 * WAD);
+}
+
