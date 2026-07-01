@@ -22,3 +22,28 @@ fn setup() -> FinancialMathContractClient<'static> {
     FinancialMathContractClient::new(&env, &contract_id)
 }
 
+#[test]
+fn scale_converts_between_decimal_precisions() {
+    let client = setup();
+    // 1.000000 at 6 decimals (USDC-style) -> 18 decimals.
+    let result = client.scale(&1_000_000i128, &6, &18);
+    assert_eq!(result, 1_000_000_000_000_000_000i128);
+}
+
+#[test]
+fn wad_mul_and_wad_div_round_trip() {
+    let client = setup();
+    const WAD: i128 = 1_000_000_000_000_000_000;
+    let product = client.wad_mul(&(3 * WAD), &(2 * WAD));
+    assert_eq!(product, 6 * WAD);
+    let quotient = client.wad_div(&product, &(2 * WAD));
+    assert_eq!(quotient, 3 * WAD);
+}
+
+#[test]
+#[should_panic]
+fn wad_div_by_zero_panics_through_the_host_boundary() {
+    let client = setup();
+    client.wad_div(&1_000_000_000_000_000_000i128, &0i128);
+}
+
