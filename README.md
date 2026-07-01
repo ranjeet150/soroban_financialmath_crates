@@ -50,3 +50,27 @@ conditions, and the target algorithm are all documented in
 
 ## Module layout
 
+```
+src/
+├── lib.rs          # #[contract] host wrapper — thin, delegates everything
+├── errors.rs       # MathError: the crate's complete #[contracterror] taxonomy
+├── fixed_point.rs  # Wad / Rad types, scale conversion — fully implemented
+├── algorithms.rs   # sqrt / ln / exp / geometric_mean — spec'd, bodies open
+└── test.rs         # Env-based contract-level integration test harness
+```
+
+## Quick start
+
+```bash
+# Run the full test suite (pure-Rust unit tests + Env-based integration tests)
+cargo test
+
+# Build the deployable contract Wasm
+cargo build --target wasm32-unknown-unknown --release
+```
+
+## Usage
+
+As a library dependency (the common case — most contracts will want the
+Rust types directly rather than going through the host contract wrapper):
+
