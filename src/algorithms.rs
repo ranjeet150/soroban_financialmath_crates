@@ -99,3 +99,70 @@ pub fn ln(input: Wad) -> Result<Wad, MathError> {
     todo!("Range-reduced Taylor series ln(x) over the Wad domain — see doc-comment for the target algorithm")
 }
 
+/// Computes `e^input` of a [`Wad`]-scaled exponent, itself returned as a
+/// `Wad`.
+///
+/// # Target algorithm
+/// The Taylor series `exp(x) = sum(x^n / n!)` converges for any `x` but
+/// converges *slowly* and risks intermediate overflow for large `|x|`, so:
+/// 1. Range-reduce by decomposing `input = k * ln(2) + r` with `r` bounded
+///    to `[-ln(2)/2, ln(2)/2]` (integer division against the precomputed
+///    `ln(2)` `Wad` constant), so that `exp(input) = 2^k * exp(r)`.
+/// 2. Compute `exp(r)` via the direct Taylor series — since `|r|` is small,
+///    this converges in a handful of terms.
+/// 3. Reconstruct `2^k * exp(r)` via bit shifts on the raw mantissa
+///    (multiplying/dividing by 2 repeatedly, `k` times), checking for
+///    overflow/underflow at each step.
+///
+/// # Errors
+/// - [`MathError::OutOfDomain`] if `input` is so large in magnitude that
+///   `exp(input)` would not fit in the `Wad` `i128` range even before
+///   rounding (contributors should define and document the exact bound
+///   chosen, e.g. in terms of `input.0` vs `i128::MAX`).
+/// - [`MathError::Overflow`] if an intermediate reconstruction step
+///   (the `2^k` bit-shift) overflows.
+/// - [`MathError::ConvergenceFailure`] if the reduced-range Taylor series
+///   does not reach ULP-level precision within [`MAX_ITERATIONS`] terms.
+pub fn exp(input: Wad) -> Result<Wad, MathError> {
+    let _ = (input, MAX_ITERATIONS);
+    todo!("Range-reduced Taylor series exp(x) over the Wad domain — see doc-comment for the target algorithm")
+}
+
+/// Computes the geometric mean of a non-empty slice of non-negative
+/// [`Wad`]-scaled values: `(x_1 * x_2 * ... * x_n)^(1/n)`.
+///
+/// Used, for example, to price an LP share against a constant-product pool
+/// (`sqrt(reserve_a * reserve_b)` is the `n = 2` special case, but this
+/// generalizes to weighted multi-asset pools).
+///
+/// # Target algorithm
+/// Computing the raw product `x_1 * x_2 * ... * x_n` directly overflows
+/// `i128` almost immediately once `n` exceeds 2-3 realistic token amounts.
+/// Instead, exploit the identity:
+///
+/// ```text
+/// geometric_mean(x_1..x_n) = exp( (ln(x_1) + ln(x_2) + ... + ln(x_n)) / n )
+/// ```
+///
+/// composing the not-yet-implemented [`ln`] and [`exp`] above. This keeps
+/// every intermediate value within `Wad` range regardless of `n`, at the
+/// cost of accumulated approximation error from two Taylor-series calls per
+/// input — contributors should benchmark the resulting precision against
+/// direct multiplication for small `n` (e.g. `n <= 2`) and consider a fast
+/// path via [`sqrt`] in that case.
+///
+/// # Errors
+/// - [`MathError::OutOfDomain`] if `values` is empty, or any element is
+///   zero or negative (mirrors the domain restriction of [`ln`]).
+/// - Propagates any [`MathError`] returned by the underlying [`ln`] /
+///   [`exp`] / division steps.
+pub fn geometric_mean(values: &[Wad]) -> Result<Wad, MathError> {
+    if values.is_empty() {
+        return Err(MathError::OutOfDomain);
+    }
+    if values.iter().any(|v| v.0 <= 0) {
+        return Err(MathError::OutOfDomain);
+    }
+    todo!("Compose ln/exp to compute the geometric mean without overflowing i128 — see doc-comment")
+}
+
