@@ -112,12 +112,18 @@ impl Wad {
 
     /// Checked addition.
     pub fn checked_add(self, rhs: Wad) -> Result<Wad, MathError> {
-        self.0.checked_add(rhs.0).map(Wad).ok_or(MathError::Overflow)
+        self.0
+            .checked_add(rhs.0)
+            .map(Wad)
+            .ok_or(MathError::Overflow)
     }
 
     /// Checked subtraction.
     pub fn checked_sub(self, rhs: Wad) -> Result<Wad, MathError> {
-        self.0.checked_sub(rhs.0).map(Wad).ok_or(MathError::Underflow)
+        self.0
+            .checked_sub(rhs.0)
+            .map(Wad)
+            .ok_or(MathError::Underflow)
     }
 
     /// Checked fixed-point multiplication: `(self * rhs) / WAD`.
@@ -143,7 +149,10 @@ impl Wad {
     /// when the caller needs to accumulate several `Wad * Wad` products
     /// before losing precision to a single final [`Rad::to_wad`] call.
     pub fn checked_mul_wide(self, rhs: Wad) -> Result<Rad, MathError> {
-        self.0.checked_mul(rhs.0).map(Rad).ok_or(MathError::Overflow)
+        self.0
+            .checked_mul(rhs.0)
+            .map(Rad)
+            .ok_or(MathError::Overflow)
     }
 
     /// True if the underlying value is exactly zero.
@@ -163,12 +172,18 @@ impl Rad {
 
     /// Checked addition.
     pub fn checked_add(self, rhs: Rad) -> Result<Rad, MathError> {
-        self.0.checked_add(rhs.0).map(Rad).ok_or(MathError::Overflow)
+        self.0
+            .checked_add(rhs.0)
+            .map(Rad)
+            .ok_or(MathError::Overflow)
     }
 
     /// Checked subtraction.
     pub fn checked_sub(self, rhs: Rad) -> Result<Rad, MathError> {
-        self.0.checked_sub(rhs.0).map(Rad).ok_or(MathError::Underflow)
+        self.0
+            .checked_sub(rhs.0)
+            .map(Rad)
+            .ok_or(MathError::Underflow)
     }
 
     /// Narrows this `Rad` back down to a [`Wad`], truncating the extra
@@ -240,9 +255,6 @@ mod tests {
 
     #[test]
     fn invalid_scale_is_rejected() {
-        assert_eq!(
-            scale_to(1, 0, MAX_SCALE + 1),
-            Err(MathError::InvalidScale)
-        );
+        assert_eq!(scale_to(1, 0, MAX_SCALE + 1), Err(MathError::InvalidScale));
     }
 }
