@@ -1,5 +1,8 @@
 # soroban-financial-math
 
+[![CI](https://github.com/Ibawa12/soroban_financialmath_crates/actions/workflows/ci.yml/badge.svg)](https://github.com/Ibawa12/soroban_financialmath_crates/actions/workflows/ci.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+
 Fixed-point arithmetic and high-precision approximation algorithms for
 [Soroban](https://developers.stellar.org/docs/build/smart-contracts/overview)
 DeFi contracts, written in `no_std` Rust with explicit overflow handling

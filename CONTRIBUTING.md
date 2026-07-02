@@ -39,8 +39,10 @@ the contract via the Soroban CLI (`stellar contract deploy`, etc.), see the
 
 ## Coding conventions
 
-These are enforced in review, not by CI alone, so please self-check before
-requesting review:
+CI (`.github/workflows/ci.yml`) enforces `cargo fmt --check`, `cargo clippy
+-- -D warnings`, `cargo test`, and the `wasm32-unknown-unknown` release
+build on every push and PR. The rest of these are enforced in review, so
+please self-check before requesting it:
 
 - **No floating point, anywhere.** Not `f32`, not `f64`, not as an
   intermediate step "just to check the answer" left in committed code.
