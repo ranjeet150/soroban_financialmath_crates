@@ -16,6 +16,38 @@ from scratch, usually with less rigor than it deserves. This crate exists so
 that work happens once, in one well-tested place, instead of once per
 contract.
 
+## The problem this solves in the Soroban ecosystem
+
+Soroban is still early. There is no equivalent yet of what
+[OpenZeppelin](https://www.openzeppelin.com/) or
+[Solmate](https://github.com/transmissions11/solmate) became for EVM
+chains — a small set of primitives that the ecosystem converges on instead
+of every team writing (and auditing, and re-auditing) its own version. Fixed-
+point math is one of the clearest places that gap shows up:
+
+- **Every AMM, lending market, and yield vault needs it**, and right now
+  each one is reinventing scale conversion, checked multiplication, and
+  overflow handling independently — with independently-varying levels of
+  rigor, and independently-paid-for audits of code that does the same
+  thing every other protocol also had audited.
+- **Inconsistent precision between protocols is a composability hazard.**
+  If protocol A prices assets at 7-decimal precision and protocol B at
+  18-decimal, any contract that reads a price from one and feeds it into
+  the other has to get that conversion exactly right, every time, with no
+  shared reference implementation to check against.
+- **Silent overflow/rounding bugs in money math are the single most
+  expensive category of smart-contract bug** industry-wide. A shared,
+  independently-reviewed library that makes overflow a hard, typed error
+  instead of a wrapped value or a rounding surprise reduces that risk
+  ecosystem-wide, not just for whoever adopts it first.
+
+`soroban-financial-math` aims to be that shared layer for the Soroban
+ecosystem specifically: a `no_std`, dependency-light, `i128`-based
+fixed-point library that any Soroban contract — an AMM, a lending
+protocol, a payments/streaming app, a stablecoin — can build on instead of
+rolling its own, with the algorithmic work (and its review) done once in a
+place the whole ecosystem can point an audit at.
+
 ## Status
 
 **Early-stage / actively looking for contributors.** The fixed-point scaling
@@ -124,6 +156,12 @@ conventions, and PR checklist.
 - No `unsafe` is used or expected to be needed anywhere in this crate.
 - Floating-point types (`f32`/`f64`) must never appear in `fixed_point.rs`
   or `algorithms.rs` — see [Why this design](#why-this-design) above.
+
+## Security
+
+Found a suspected vulnerability? Please don't open a public issue — see
+[SECURITY.md](SECURITY.md) for the private reporting process, response
+targets, and what's in/out of scope.
 
 ## License
 
