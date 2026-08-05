@@ -31,41 +31,72 @@ use crate::fixed_point::Wad;
 /// target.
 pub const MAX_ITERATIONS: u32 = 100;
 
+/// Integer square root of a non-negative `i128`, via Newton's method
+/// (the Babylonian method restricted to integers). Returns the largest
+/// `r` such that `r * r <= n`.
+///
+/// Used as the initial-guess seed for [`sqrt`]'s `Wad`-space refinement
+/// below.
+fn isqrt_i128(n: i128) -> i128 {
+    if n < 2 {
+        return n;
+    }
+    let mut x = n;
+    let mut y = (x + 1) / 2;
+    while y < x {
+        x = y;
+        y = (x + n / x) / 2;
+    }
+    x
+}
+
 /// Computes the integer square root of a [`Wad`]-scaled value, itself
 /// returned as a `Wad`, i.e. `result^2 ≈ input` (both interpreted as
 /// fixed-point reals).
 ///
-/// # Target algorithm
+/// # Algorithm
 /// Newton-Raphson iteration on `f(y) = y^2 - x`:
 ///
 /// ```text
 /// y_{n+1} = (y_n + x / y_n) / 2
 /// ```
 ///
-/// A good closed-form initial guess (e.g. via `i128::leading_zeros` to
-/// estimate `log2(x)`, halved) converges to full `Wad` precision in under
-/// ~10 iterations for any realistic token-amount magnitude. The
-/// implementation must:
-/// 1. Operate on the raw `i128` mantissa with the scale factor threaded
-///    through the iteration (naively squaring a `Wad` doubles its scale to
-///    `Wad^2`, so each iteration must rescale back down — see
-///    [`Wad::checked_mul`] / [`Wad::checked_div`] for the pattern).
-/// 2. Terminate early once successive iterates differ by at most 1 unit in
-///    the last place (ULP) at `Wad` precision, rather than always running
-///    [`MAX_ITERATIONS`].
-/// 3. Special-case `input == Wad::ZERO` to return `Wad::ZERO` directly
-///    (Newton-Raphson does not converge from a zero seed).
+/// The initial guess is seeded from [`isqrt_i128`] of the raw mantissa
+/// (scaled by `1e9`, since `sqrt(1e18) = 1e9`), which already lands within
+/// one Newton step of full `Wad` precision for any realistic magnitude, then
+/// refined in `Wad`-space via [`Wad::checked_add`] / [`Wad::checked_div`]
+/// until successive iterates differ by at most 1 unit in the last place
+/// (ULP) at `Wad` precision.
 ///
 /// # Errors
 /// - [`MathError::NegativeInput`] if `input.0 < 0` (no real square root).
 /// - [`MathError::ConvergenceFailure`] if [`MAX_ITERATIONS`] is exhausted
 ///   without reaching ULP-level convergence.
+/// - Propagates [`MathError::Overflow`] / [`MathError::DivisionByZero`] from
+///   the underlying `Wad` arithmetic for pathologically large inputs.
 pub fn sqrt(input: Wad) -> Result<Wad, MathError> {
     if input.0 < 0 {
         return Err(MathError::NegativeInput);
     }
-    let _ = MAX_ITERATIONS;
-    todo!("Newton-Raphson sqrt over the Wad domain — see doc-comment for the target algorithm")
+    if input.0 == 0 {
+        return Ok(Wad::ZERO);
+    }
+
+    let seed = isqrt_i128(input.0)
+        .checked_mul(1_000_000_000)
+        .ok_or(MathError::Overflow)?;
+    let mut y = Wad(seed.max(1));
+
+    for _ in 0..MAX_ITERATIONS {
+        let x_over_y = input.checked_div(y)?;
+        let sum = y.checked_add(x_over_y)?;
+        let next = Wad(sum.0 / 2);
+        if (next.0 - y.0).abs() <= 1 {
+            return Ok(next);
+        }
+        y = next;
+    }
+    Err(MathError::ConvergenceFailure)
 }
 
 /// Computes the natural logarithm `ln(input)` of a [`Wad`]-scaled value,
@@ -169,10 +200,32 @@ pub fn geometric_mean(values: &[Wad]) -> Result<Wad, MathError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fixed_point::WAD;
 
     #[test]
     fn sqrt_rejects_negative_input() {
         assert_eq!(sqrt(Wad::from_raw(-1)), Err(MathError::NegativeInput));
+    }
+
+    #[test]
+    fn sqrt_of_zero_is_zero() {
+        assert_eq!(sqrt(Wad::ZERO), Ok(Wad::ZERO));
+    }
+
+    #[test]
+    fn sqrt_of_perfect_squares_is_exact() {
+        assert_eq!(sqrt(Wad(4 * WAD)).unwrap(), Wad(2 * WAD));
+        assert_eq!(sqrt(Wad::ONE).unwrap(), Wad::ONE);
+        assert_eq!(sqrt(Wad(9 * WAD)).unwrap(), Wad(3 * WAD));
+        assert_eq!(sqrt(Wad(1_000_000 * WAD)).unwrap(), Wad(1_000 * WAD));
+    }
+
+    #[test]
+    fn sqrt_of_two_is_within_one_ulp_of_the_true_value() {
+        // sqrt(2) = 1.41421356237309504880...
+        let expected: i128 = 1_414_213_562_373_095_048;
+        let got = sqrt(Wad(2 * WAD)).unwrap();
+        assert!((got.0 - expected).abs() <= 1, "got {}", got.0);
     }
 
     #[test]
