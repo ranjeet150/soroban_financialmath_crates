@@ -8,17 +8,19 @@ first understanding the whole codebase. This document explains how.
 ## Before you start
 
 1. **Check for an existing issue or claim.** If you're picking up one of the
-   algorithms listed in the [README's Open Issues table](README.md#open-issues),
-   comment on (or open) the corresponding GitHub issue first so two people
-   don't duplicate the same work.
-2. **Read the doc-comment before writing code.** Every `todo!()` function in
+   items in the [README's Known Limitations section](README.md#known-limitations)
+   — e.g. tightening `ln`/`exp` precision, or a full `mulDiv` for
+   `checked_div` — comment on (or open) the corresponding GitHub issue first
+   so two people don't duplicate the same work.
+2. **Read the doc-comment before writing code.** Every function in
    [`src/algorithms.rs`](src/algorithms.rs) has a doc-comment specifying the
-   target algorithm, the required range-reduction steps, and the exact error
-   conditions the function must return. That doc-comment is the spec — if
-   you think it's wrong or ambiguous, open a discussion/issue before
-   implementing something different, rather than silently diverging from it.
+   algorithm it implements, the required range-reduction steps, and the exact
+   error conditions the function must return. That doc-comment is the spec —
+   if you think it's wrong, ambiguous, or the implementation has drifted from
+   it, open a discussion/issue before changing behavior, rather than silently
+   diverging from what's documented.
 3. **Small PRs over big ones.** One algorithm, one bug fix, or one test
-   improvement per PR. A PR that implements `sqrt` and also refactors
+   improvement per PR. A PR that touches `sqrt` and also refactors
    `fixed_point.rs` and also fixes an unrelated typo is three PRs wearing a
    trenchcoat, and much harder to review and revert independently.
 
@@ -67,24 +69,22 @@ please self-check before requesting it:
   confidence is usually wrong at some input boundary, and the checked form
   costs nothing at this precision.
 - **Match the existing doc-comment style.** Public functions document their
-  target algorithm/formula, not just their signature, and enumerate every
+  algorithm/formula, not just their signature, and enumerate every
   `# Errors` variant they can return. Look at `sqrt`/`ln`/`exp` in
-  `algorithms.rs` for the expected level of detail even while their bodies
-  are still `todo!()`.
+  `algorithms.rs` for the expected level of detail.
 - **No unrelated formatting churn.** Run `cargo fmt` on files you actually
   touched; don't reformat files you didn't otherwise change.
 
 ## Testing requirements
 
-- Every algorithm you implement needs unit tests in the same file
+- Any algorithm change needs unit tests in the same file
   (`#[cfg(test)] mod tests` at the bottom of `algorithms.rs`, following the
   existing pattern) covering: a known-good value, the domain boundary
   (e.g. `ln(x)` at `x` just above zero), and every documented error
   condition.
-- Remove the `#[ignore = "..."]` attribute from the corresponding
-  integration test in [`src/test.rs`](src/test.rs) and fill in the real
-  expected value once your implementation is in — that test currently
-  exists specifically as your target.
+- Add or update the matching integration test in
+  [`src/test.rs`](src/test.rs) exercising the change through the host
+  contract boundary, not just the pure-Rust unit test.
 - Run `cargo test` (not just `cargo check`) before opening a PR. All
   existing tests must still pass; don't loosen or delete a test to make
   your change pass unless you can explain why the old assertion was wrong.
@@ -97,8 +97,7 @@ please self-check before requesting it:
       deliberate, discussed deviation
 - [ ] New/updated unit tests in `algorithms.rs`, covering domain boundaries
       and error paths
-- [ ] Corresponding `#[ignore]` removed from `src/test.rs` with real
-      assertions
+- [ ] Corresponding integration test added/updated in `src/test.rs`
 - [ ] `cargo test` passes locally
 - [ ] `cargo build --target wasm32-unknown-unknown --release` succeeds
 - [ ] No floating-point types introduced
