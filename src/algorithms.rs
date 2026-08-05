@@ -1,24 +1,13 @@
 //! High-precision approximation algorithms over [`Wad`]-scaled fixed-point
 //! numbers.
 //!
-//! ---
-//! ### Contributor note
-//! The signatures, domains, error conditions, and doc-comments below are the
-//! accepted public API surface — do not change them without opening a
-//! design discussion first. The **bodies** are intentionally left as
-//! `todo!()` and tracked as individual open-source issues:
-//!
-//! | Function         | Suggested issue difficulty |
-//! |------------------|-----------------------------|
-//! | [`sqrt`]         | Medium (Newton-Raphson, well-trodden ground) |
-//! | [`ln`]           | High (range reduction + Taylor series + error bounding) |
-//! | [`exp`]          | High (range reduction + Taylor series + overflow guarding) |
-//! | [`geometric_mean`] | Medium (composes `ln`/`exp`, mostly wiring + edge cases) |
-//!
-//! All of these MUST remain free of floating-point instructions
-//! (`f32`/`f64`) — Soroban's Wasm host does not guarantee deterministic
-//! float rounding across validator implementations, so every step has to be
-//! expressed in checked integer arithmetic on the underlying `i128`.
+//! `sqrt`, `ln`, `exp`, and `geometric_mean` are all implemented below in
+//! pure checked `i128` arithmetic — no floating-point instructions
+//! (`f32`/`f64`) appear anywhere in this module, since Soroban's Wasm host
+//! does not guarantee deterministic float rounding across validator
+//! implementations. The signatures, domains, and error conditions
+//! documented on each function are the stable public API surface; changing
+//! them is a breaking change.
 
 use crate::errors::MathError;
 use crate::fixed_point::Wad;
@@ -40,8 +29,11 @@ const LN_2: Wad = Wad(693_147_180_559_945_309);
 /// (the Babylonian method restricted to integers). Returns the largest
 /// `r` such that `r * r <= n`.
 ///
-/// Used as the initial-guess seed for [`sqrt`]'s `Wad`-space refinement
-/// below.
+/// Used both as the initial-guess seed for [`sqrt`]'s `Wad`-space
+/// refinement and directly by [`geometric_mean`]'s two-value fast path
+/// (where the product is already `Rad`-scaled, i.e. `Wad * Wad`, so its
+/// *exact* integer square root is precisely the `Wad`-scaled geometric
+/// mean — no refinement needed).
 fn isqrt_i128(n: i128) -> i128 {
     if n < 2 {
         return n;
@@ -281,27 +273,25 @@ pub fn exp(input: Wad) -> Result<Wad, MathError> {
 /// (`sqrt(reserve_a * reserve_b)` is the `n = 2` special case, but this
 /// generalizes to weighted multi-asset pools).
 ///
-/// # Target algorithm
-/// Computing the raw product `x_1 * x_2 * ... * x_n` directly overflows
-/// `i128` almost immediately once `n` exceeds 2-3 realistic token amounts.
-/// Instead, exploit the identity:
-///
-/// ```text
-/// geometric_mean(x_1..x_n) = exp( (ln(x_1) + ln(x_2) + ... + ln(x_n)) / n )
-/// ```
-///
-/// composing the not-yet-implemented [`ln`] and [`exp`] above. This keeps
-/// every intermediate value within `Wad` range regardless of `n`, at the
-/// cost of accumulated approximation error from two Taylor-series calls per
-/// input — contributors should benchmark the resulting precision against
-/// direct multiplication for small `n` (e.g. `n <= 2`) and consider a fast
-/// path via [`sqrt`] in that case.
+/// # Algorithm
+/// - `n == 1`: the geometric mean of a single value is that value.
+/// - `n == 2`: computed as an *exact* integer square root of the
+///   `Rad`-scaled (`Wad * Wad`, i.e. 1e36) wide product via
+///   [`Wad::checked_mul_wide`] and [`isqrt_i128`], rather than through
+///   `ln`/`exp` — this avoids the two Taylor-series calls entirely and
+///   their accumulated approximation error, and is exact whenever the
+///   product is a perfect square (e.g. `geometric_mean(a, a) == a`).
+/// - `n > 2`: computed by composing [`ln`] and [`exp`] via the identity
+///   `geometric_mean(x_1..x_n) = exp((ln(x_1) + ... + ln(x_n)) / n)`, which
+///   keeps every intermediate value within `Wad` range regardless of `n`
+///   (the raw product `x_1 * x_2 * ... * x_n` would overflow `i128` almost
+///   immediately once `n` exceeds 2-3 realistic token amounts).
 ///
 /// # Errors
 /// - [`MathError::OutOfDomain`] if `values` is empty, or any element is
 ///   zero or negative (mirrors the domain restriction of [`ln`]).
 /// - Propagates any [`MathError`] returned by the underlying [`ln`] /
-///   [`exp`] / division steps.
+///   [`exp`] / multiplication steps.
 pub fn geometric_mean(values: &[Wad]) -> Result<Wad, MathError> {
     if values.is_empty() {
         return Err(MathError::OutOfDomain);
@@ -309,7 +299,22 @@ pub fn geometric_mean(values: &[Wad]) -> Result<Wad, MathError> {
     if values.iter().any(|v| v.0 <= 0) {
         return Err(MathError::OutOfDomain);
     }
-    todo!("Compose ln/exp to compute the geometric mean without overflowing i128 — see doc-comment")
+
+    match values {
+        [single] => Ok(*single),
+        [a, b] => {
+            let product = a.checked_mul_wide(*b)?;
+            Ok(Wad(isqrt_i128(product.0)))
+        }
+        _ => {
+            let mut sum = Wad::ZERO;
+            for v in values {
+                sum = sum.checked_add(ln(*v)?)?;
+            }
+            let mean_ln = Wad(sum.0 / values.len() as i128);
+            exp(mean_ln)
+        }
+    }
 }
 
 #[cfg(test)]
@@ -361,13 +366,15 @@ mod tests {
         assert_eq!(ln(Wad(WAD / 2)).unwrap(), Wad(-LN_2.0));
     }
 
-    /// [`ln`] is a Taylor-series approximation; even with rounded (rather
-    /// than truncated) per-term division, error from each of the ~15-20
-    /// series terms compounds. Empirically this stays within ~10 ULP
-    /// (relative error on the order of `1e-17`) — comfortably precise for
-    /// on-chain DeFi math, but not bit-exact the way [`sqrt`] is for
-    /// perfect squares. Deliberately generous rather than tight, so the
-    /// test suite documents the honest precision bound.
+    /// Both [`ln`] and [`exp`] are Taylor-series approximations; even with
+    /// rounded (rather than truncated) per-term division, error from each
+    /// of the ~15-20 series terms compounds. Empirically this stays within
+    /// ~10 ULP (relative error on the order of `1e-17`) for a single call
+    /// — comfortably precise for on-chain DeFi math, but callers should
+    /// not expect bit-exact results the way [`sqrt`] gives for perfect
+    /// squares or [`geometric_mean`] gives for two values. Deliberately
+    /// generous rather than tight, so the test suite documents the honest
+    /// precision bound.
     const APPROX_TOLERANCE_ULP: i128 = 20;
 
     #[test]
@@ -420,5 +427,31 @@ mod tests {
     fn geometric_mean_rejects_non_positive_element() {
         let values = [Wad::ONE, Wad::ZERO];
         assert_eq!(geometric_mean(&values), Err(MathError::OutOfDomain));
+    }
+
+    #[test]
+    fn geometric_mean_of_a_single_value_is_that_value() {
+        let values = [Wad(7 * WAD)];
+        assert_eq!(geometric_mean(&values).unwrap(), Wad(7 * WAD));
+    }
+
+    #[test]
+    fn geometric_mean_of_matching_values_is_that_value() {
+        let values = [Wad(4 * WAD), Wad(4 * WAD)];
+        assert_eq!(geometric_mean(&values).unwrap(), Wad(4 * WAD));
+    }
+
+    #[test]
+    fn geometric_mean_of_two_values_matches_direct_sqrt() {
+        // geometric_mean(4, 9) = sqrt(36) = 6, exactly (perfect square).
+        let values = [Wad(4 * WAD), Wad(9 * WAD)];
+        assert_eq!(geometric_mean(&values).unwrap(), Wad(6 * WAD));
+    }
+
+    #[test]
+    fn geometric_mean_of_three_equal_values_is_within_a_few_ulp() {
+        let values = [Wad(4 * WAD), Wad(4 * WAD), Wad(4 * WAD)];
+        let got = geometric_mean(&values).unwrap();
+        assert!((got.0 - 4 * WAD).abs() <= 4, "got {}", got.0);
     }
 }
