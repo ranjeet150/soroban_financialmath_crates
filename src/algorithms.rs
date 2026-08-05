@@ -203,33 +203,75 @@ fn round_div_wad(numerator: Wad, denominator: Wad) -> Result<Wad, MathError> {
     Ok(Wad(round_div_i128(scaled, denominator.0)))
 }
 
+/// Upper bound on `|input.0|` accepted by [`exp`]. Chosen so that
+/// `input / ln(2)` (the number of doubling/halving steps the
+/// range-reduction reconstruction loop runs) stays in the low hundreds
+/// regardless of input, and with enough headroom below the point where
+/// `2^k * exp(r)` would overflow `i128` (`k` beyond roughly 67 at `Wad`
+/// precision) that the overflow is always caught by the checked
+/// reconstruction loop itself and reported as [`MathError::Overflow`]
+/// rather than this coarser domain check.
+const EXP_DOMAIN_BOUND: i128 = 90 * crate::fixed_point::WAD;
+
 /// Computes `e^input` of a [`Wad`]-scaled exponent, itself returned as a
 /// `Wad`.
 ///
-/// # Target algorithm
-/// The Taylor series `exp(x) = sum(x^n / n!)` converges for any `x` but
-/// converges *slowly* and risks intermediate overflow for large `|x|`, so:
+/// # Algorithm
 /// 1. Range-reduce by decomposing `input = k * ln(2) + r` with `r` bounded
-///    to `[-ln(2)/2, ln(2)/2]` (integer division against the precomputed
-///    `ln(2)` `Wad` constant), so that `exp(input) = 2^k * exp(r)`.
-/// 2. Compute `exp(r)` via the direct Taylor series — since `|r|` is small,
-///    this converges in a handful of terms.
-/// 3. Reconstruct `2^k * exp(r)` via bit shifts on the raw mantissa
-///    (multiplying/dividing by 2 repeatedly, `k` times), checking for
-///    overflow/underflow at each step.
+///    to `[-ln(2)/2, ln(2)/2]` (rounding integer division against the
+///    precomputed [`LN_2`] `Wad` constant), so that
+///    `exp(input) = 2^k * exp(r)`.
+/// 2. Compute `exp(r)` via the direct Taylor series `sum(r^n / n!)` — since
+///    `|r|` is small (at most `ln(2)/2 ≈ 0.3466`), this converges in well
+///    under [`MAX_ITERATIONS`] terms.
+/// 3. Reconstruct `2^k * exp(r)` via repeated checked doubling (`k > 0`) or
+///    halving (`k < 0`) of the raw mantissa.
 ///
 /// # Errors
-/// - [`MathError::OutOfDomain`] if `input` is so large in magnitude that
-///   `exp(input)` would not fit in the `Wad` `i128` range even before
-///   rounding (contributors should define and document the exact bound
-///   chosen, e.g. in terms of `input.0` vs `i128::MAX`).
-/// - [`MathError::Overflow`] if an intermediate reconstruction step
-///   (the `2^k` bit-shift) overflows.
+/// - [`MathError::OutOfDomain`] if `|input.0|` exceeds [`EXP_DOMAIN_BOUND`]
+///   — well beyond the point where `exp(input)` could fit in `Wad`'s `i128`
+///   range even before rounding.
+/// - [`MathError::Overflow`] if the `2^k` reconstruction step overflows.
 /// - [`MathError::ConvergenceFailure`] if the reduced-range Taylor series
 ///   does not reach ULP-level precision within [`MAX_ITERATIONS`] terms.
 pub fn exp(input: Wad) -> Result<Wad, MathError> {
-    let _ = (input, MAX_ITERATIONS);
-    todo!("Range-reduced Taylor series exp(x) over the Wad domain — see doc-comment for the target algorithm")
+    if input.0 > EXP_DOMAIN_BOUND || input.0 < -EXP_DOMAIN_BOUND {
+        return Err(MathError::OutOfDomain);
+    }
+
+    let k = round_div_i128(input.0, LN_2.0);
+    let k_ln_2 = LN_2.0.checked_mul(k).ok_or(MathError::Overflow)?;
+    let r = Wad(input.0.checked_sub(k_ln_2).ok_or(MathError::Overflow)?);
+
+    // Direct Taylor series exp(r) = sum(r^n / n!), |r| <= ln(2)/2.
+    let mut term = Wad::ONE;
+    let mut sum = Wad::ONE;
+    let mut converged = false;
+    for n in 1..=MAX_ITERATIONS {
+        term = term.checked_mul(r)?;
+        term = Wad(round_div_i128(term.0, n as i128));
+        if term.0 == 0 {
+            converged = true;
+            break;
+        }
+        sum = sum.checked_add(term)?;
+    }
+    if !converged {
+        return Err(MathError::ConvergenceFailure);
+    }
+
+    // Reconstruct 2^k * exp(r).
+    let mut result = sum;
+    if k > 0 {
+        for _ in 0..k {
+            result = result.checked_add(result)?;
+        }
+    } else {
+        for _ in 0..(-k) {
+            result = Wad(result.0 / 2);
+        }
+    }
+    Ok(result)
 }
 
 /// Computes the geometric mean of a non-empty slice of non-negative
@@ -334,6 +376,39 @@ mod tests {
         let e = Wad(2_718_281_828_459_045_235);
         let got = ln(e).unwrap();
         assert!((got.0 - WAD).abs() <= APPROX_TOLERANCE_ULP, "got {}", got.0);
+    }
+
+    #[test]
+    fn exp_of_zero_is_one() {
+        assert_eq!(exp(Wad::ZERO).unwrap(), Wad::ONE);
+    }
+
+    #[test]
+    fn exp_of_one_is_within_tolerance_of_e() {
+        let expected: i128 = 2_718_281_828_459_045_235;
+        let got = exp(Wad::ONE).unwrap();
+        assert!(
+            (got.0 - expected).abs() <= APPROX_TOLERANCE_ULP,
+            "got {}",
+            got.0
+        );
+    }
+
+    #[test]
+    fn exp_and_ln_round_trip_within_tolerance() {
+        let x = Wad(5 * WAD);
+        let round_tripped = exp(ln(x).unwrap()).unwrap();
+        assert!(
+            (round_tripped.0 - x.0).abs() <= 2 * APPROX_TOLERANCE_ULP,
+            "got {}",
+            round_tripped.0
+        );
+    }
+
+    #[test]
+    fn exp_rejects_input_beyond_the_domain_bound() {
+        assert_eq!(exp(Wad(EXP_DOMAIN_BOUND + 1)), Err(MathError::OutOfDomain));
+        assert_eq!(exp(Wad(-EXP_DOMAIN_BOUND - 1)), Err(MathError::OutOfDomain));
     }
 
     #[test]
