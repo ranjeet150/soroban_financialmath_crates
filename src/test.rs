@@ -90,8 +90,12 @@ fn exp_of_zero_is_one() {
 fn geometric_mean_of_matching_values_is_that_value() {
     let client = setup();
     const WAD: i128 = 1_000_000_000_000_000_000;
-    let env = Env::default();
-    let values = vec![&env, 4 * WAD, 4 * WAD];
+    // Reuse the client's own `Env` (rather than spinning up a second,
+    // unrelated `Env::default()`) — a `Vec` created against a different
+    // host instance than the one the client is bound to is a foreign
+    // object reference and the host rejects it as "mis-tagged" the moment
+    // it's passed as an argument.
+    let values = vec![&client.env, 4 * WAD, 4 * WAD];
     let result = client.geometric_mean(&values);
     assert_eq!(result, 4 * WAD);
 }
@@ -102,8 +106,7 @@ fn geometric_mean_of_three_values() {
     const WAD: i128 = 1_000_000_000_000_000_000;
     // geometric_mean(1, 2, 4) = 2 (composed via ln/exp for n > 2), within a
     // few ULP of Wad precision.
-    let env = Env::default();
-    let values = vec![&env, WAD, 2 * WAD, 4 * WAD];
+    let values = vec![&client.env, WAD, 2 * WAD, 4 * WAD];
     let result = client.geometric_mean(&values);
     assert!((result - 2 * WAD).abs() <= 20, "got {}", result);
 }
