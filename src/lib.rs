@@ -57,8 +57,8 @@ impl FinancialMathContract {
 
     /// Fixed-point square root over a `Wad`-scaled raw `i128`.
     ///
-    /// Delegates to [`algorithms::sqrt`], which is currently a
-    /// contributor-facing `todo!()` — see that module's doc-comments.
+    /// Delegates to [`algorithms::sqrt`] — see that function's doc-comment
+    /// for the Newton-Raphson algorithm and error conditions.
     pub fn sqrt(env: Env, input: i128) -> i128 {
         algorithms::sqrt(Wad(input))
             .unwrap_or_else(|err| panic_with_error!(&env, err))
@@ -67,8 +67,9 @@ impl FinancialMathContract {
 
     /// Natural logarithm over a `Wad`-scaled raw `i128`.
     ///
-    /// Delegates to [`algorithms::ln`], which is currently a
-    /// contributor-facing `todo!()` — see that module's doc-comments.
+    /// Delegates to [`algorithms::ln`] — see that function's doc-comment
+    /// for the range-reduction/Taylor-series algorithm and error
+    /// conditions.
     pub fn ln(env: Env, input: i128) -> i128 {
         algorithms::ln(Wad(input))
             .unwrap_or_else(|err| panic_with_error!(&env, err))
@@ -77,8 +78,9 @@ impl FinancialMathContract {
 
     /// Exponential function over a `Wad`-scaled raw `i128`.
     ///
-    /// Delegates to [`algorithms::exp`], which is currently a
-    /// contributor-facing `todo!()` — see that module's doc-comments.
+    /// Delegates to [`algorithms::exp`] — see that function's doc-comment
+    /// for the range-reduction/Taylor-series algorithm and error
+    /// conditions.
     pub fn exp(env: Env, input: i128) -> i128 {
         algorithms::exp(Wad(input))
             .unwrap_or_else(|err| panic_with_error!(&env, err))
@@ -87,8 +89,9 @@ impl FinancialMathContract {
 
     /// Geometric mean over a list of `Wad`-scaled raw `i128` values.
     ///
-    /// Delegates to [`algorithms::geometric_mean`], which is currently a
-    /// contributor-facing `todo!()` — see that module's doc-comments.
+    /// Delegates to [`algorithms::geometric_mean`] — see that function's
+    /// doc-comment for the algorithm (an exact-integer-sqrt fast path for
+    /// `n <= 2`, `ln`/`exp` composition otherwise) and error conditions.
     pub fn geometric_mean(env: Env, values: Vec<i128>) -> i128 {
         let wads: AllocVec<Wad> = values.iter().map(Wad).collect();
         algorithms::geometric_mean(&wads)
