@@ -47,15 +47,15 @@ fn wad_div_by_zero_panics_through_the_host_boundary() {
     client.wad_div(&1_000_000_000_000_000_000i128, &0i128);
 }
 
-// --- Contributor-facing algorithm placeholders -----------------------------
+// --- Approximation algorithm entrypoints ------------------------------------
 //
-// `sqrt`, `ln`, `exp`, and `geometric_mean` currently panic via `todo!()`
-// (see `algorithms.rs`). These tests are marked `#[ignore]` so CI stays
-// green; once an issue lands an implementation, remove the `#[ignore]` and
-// fill in the expected value at `Wad` (1e18) precision.
+// `sqrt`, `ln`, `exp`, and `geometric_mean` are implemented in
+// `algorithms.rs` (Newton-Raphson / range-reduced Taylor series / exact
+// integer-sqrt fast path respectively); these exercise them through the
+// host contract boundary, complementing the pure-Rust unit tests in
+// `algorithms.rs` itself.
 
 #[test]
-#[ignore = "algorithms::sqrt is an open contributor issue"]
 fn sqrt_of_four_is_two() {
     let client = setup();
     const WAD: i128 = 1_000_000_000_000_000_000;
@@ -64,7 +64,13 @@ fn sqrt_of_four_is_two() {
 }
 
 #[test]
-#[ignore = "algorithms::ln is an open contributor issue"]
+#[should_panic]
+fn sqrt_of_negative_panics_through_the_host_boundary() {
+    let client = setup();
+    client.sqrt(&-1i128);
+}
+
+#[test]
 fn ln_of_one_is_zero() {
     let client = setup();
     const WAD: i128 = 1_000_000_000_000_000_000;
@@ -73,7 +79,6 @@ fn ln_of_one_is_zero() {
 }
 
 #[test]
-#[ignore = "algorithms::exp is an open contributor issue"]
 fn exp_of_zero_is_one() {
     let client = setup();
     const WAD: i128 = 1_000_000_000_000_000_000;
@@ -82,7 +87,6 @@ fn exp_of_zero_is_one() {
 }
 
 #[test]
-#[ignore = "algorithms::geometric_mean is an open contributor issue"]
 fn geometric_mean_of_matching_values_is_that_value() {
     let client = setup();
     const WAD: i128 = 1_000_000_000_000_000_000;
@@ -90,4 +94,16 @@ fn geometric_mean_of_matching_values_is_that_value() {
     let values = vec![&env, 4 * WAD, 4 * WAD];
     let result = client.geometric_mean(&values);
     assert_eq!(result, 4 * WAD);
+}
+
+#[test]
+fn geometric_mean_of_three_values() {
+    let client = setup();
+    const WAD: i128 = 1_000_000_000_000_000_000;
+    // geometric_mean(1, 2, 4) = 2 (composed via ln/exp for n > 2), within a
+    // few ULP of Wad precision.
+    let env = Env::default();
+    let values = vec![&env, WAD, 2 * WAD, 4 * WAD];
+    let result = client.geometric_mean(&values);
+    assert!((result - 2 * WAD).abs() <= 20, "got {}", result);
 }
