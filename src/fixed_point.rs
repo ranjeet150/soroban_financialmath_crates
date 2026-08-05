@@ -136,12 +136,36 @@ impl Wad {
     }
 
     /// Checked fixed-point division: `(self * WAD) / rhs`.
+    ///
+    /// The common case computes `self.0 * WAD` directly, which is exact and
+    /// cheap but overflows `i128` once `self.0` exceeds roughly `1.7e20`
+    /// (a `Wad` real value of ~170 — an entirely ordinary magnitude, e.g.
+    /// a token amount in the low millions at 18 decimals). When that
+    /// happens this falls back to a divide-first decomposition —
+    /// `self.0 = q * rhs.0 + r` via ordinary `i128` division (which cannot
+    /// itself overflow, since both operands already fit in `i128`), giving
+    /// `(self.0 * WAD) / rhs.0 == q * WAD + (r * WAD) / rhs.0` — which
+    /// keeps every intermediate within range for the realistic case this
+    /// crate targets: `self` and `rhs` of comparable order of magnitude
+    /// (as arise naturally in, e.g., [`crate::algorithms::sqrt`]'s
+    /// Newton-Raphson refinement). It still reports
+    /// [`MathError::Overflow`] rather than wrapping for the residual case
+    /// where `rhs` is many orders of magnitude smaller than `self`.
     pub fn checked_div(self, rhs: Wad) -> Result<Wad, MathError> {
         if rhs.0 == 0 {
             return Err(MathError::DivisionByZero);
         }
-        let scaled = self.0.checked_mul(WAD).ok_or(MathError::Overflow)?;
-        Ok(Wad(scaled / rhs.0))
+        if let Some(scaled) = self.0.checked_mul(WAD) {
+            return Ok(Wad(scaled / rhs.0));
+        }
+        let quotient = self.0 / rhs.0;
+        let remainder = self.0 % rhs.0;
+        let quotient_scaled = quotient.checked_mul(WAD).ok_or(MathError::Overflow)?;
+        let remainder_scaled = remainder.checked_mul(WAD).ok_or(MathError::Overflow)?;
+        quotient_scaled
+            .checked_add(remainder_scaled / rhs.0)
+            .map(Wad)
+            .ok_or(MathError::Overflow)
     }
 
     /// Multiplies two `Wad`s without reducing the result back down,
@@ -242,6 +266,43 @@ mod tests {
     fn div_by_zero_is_rejected() {
         let a = Wad::ONE;
         assert_eq!(a.checked_div(Wad::ZERO), Err(MathError::DivisionByZero));
+    }
+
+    #[test]
+    fn div_of_large_comparable_magnitude_operands_does_not_overflow() {
+        // A million-token-scale numerator (self.0 * WAD alone would
+        // overflow i128) divided by an operand of comparable magnitude —
+        // this is exactly the shape sqrt()'s Newton-Raphson refinement
+        // produces, and previously overflowed unconditionally.
+        let a = Wad(1_000_000 * WAD);
+        let b = Wad(1_000 * WAD);
+        assert_eq!(a.checked_div(b).unwrap(), Wad(1_000 * WAD));
+    }
+
+    #[test]
+    fn div_large_close_magnitude_operands_matches_exact_expectation() {
+        // Two large Wads close in magnitude — as arise in sqrt()'s
+        // Newton-Raphson refinement, where the two operands converge
+        // toward equality — where `self.0 * WAD` alone overflows, but the
+        // quotient is small and the remainder stays well within range so
+        // the fallback resolves it exactly rather than reporting Overflow.
+        let a = Wad(1_000_000 * WAD + 7 * WAD); // 1,000,007.0
+        let b = Wad(1_000_000 * WAD); // 1,000,000.0
+        let result = a.checked_div(b).unwrap();
+        // 1,000,007 / 1,000,000 = 1.000007
+        assert_eq!(result.0, WAD + 7_000_000_000_000);
+    }
+
+    #[test]
+    fn div_reports_overflow_rather_than_a_wrong_answer_when_unrepresentable() {
+        // Operands of wildly different magnitude, both individually valid
+        // i128 Wads, whose exact quotient's remainder term cannot be
+        // represented even via the fallback decomposition. The crate's
+        // contract is "checked arithmetic everywhere" — this must fail
+        // loudly with `Overflow`, never silently truncate or wrap.
+        let a = Wad(i128::MAX - 1);
+        let b = Wad(3);
+        assert_eq!(a.checked_div(b), Err(MathError::Overflow));
     }
 
     #[test]
