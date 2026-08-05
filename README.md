@@ -50,13 +50,16 @@ place the whole ecosystem can point an audit at.
 
 ## Status
 
-**Early-stage / actively looking for contributors.** The fixed-point scaling
-layer ([`Wad`]/[`Rad`], see below) is complete, tested, and safe to build on
-today. The four approximation algorithms (`sqrt`, `ln`, `exp`,
-`geometric_mean`) are fully specified — signatures, domains, error
-conditions, and the target algorithm are all documented in
-[`src/algorithms.rs`](src/algorithms.rs) — but their bodies are open
-`todo!()`s. See [Open Issues](#open-issues) below if you want to pick one up.
+**Feature-complete, still looking for review.** Both the fixed-point scaling
+layer ([`Wad`]/[`Rad`]) and the four approximation algorithms (`sqrt`, `ln`,
+`exp`, `geometric_mean`) are implemented and covered by 36 passing tests
+(pure-Rust unit tests plus `Env`-based contract integration tests) — see
+[`src/algorithms.rs`](src/algorithms.rs) for the exact algorithms used and
+their documented error conditions and precision bounds. Contributions are
+still very welcome, particularly review of the approximation precision
+claims and the `checked_div` overflow fallback (see
+[Known limitations](#known-limitations) below) — see
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Why this design
 
@@ -90,7 +93,7 @@ src/
 ├── lib.rs          # #[contract] host wrapper — thin, delegates everything
 ├── errors.rs       # MathError: the crate's complete #[contracterror] taxonomy
 ├── fixed_point.rs  # Wad / Rad types, scale conversion — fully implemented
-├── algorithms.rs   # sqrt / ln / exp / geometric_mean — spec'd, bodies open
+├── algorithms.rs   # sqrt / ln / exp / geometric_mean — implemented + tested
 └── test.rs         # Env-based contract-level integration test harness
 ```
 
@@ -126,24 +129,32 @@ let client = FinancialMathContractClient::new(&env, &contract_id);
 let scaled = client.scale(&1_000_000, &6, &18); // USDC-style 6dp -> 18dp
 ```
 
-## Open Issues
+## Known limitations
 
-These four functions are the primary place external contributors can add
-value right now. Each has a full doc-comment in
-[`src/algorithms.rs`](src/algorithms.rs) explaining the target algorithm,
-required range-reduction steps, and exact error conditions — read that
-before opening a PR.
+Found while implementing and testing the algorithms below — documented
+rather than silently worked around, and good starting points if you want
+to contribute:
 
-| Function | File | Suggested difficulty | What's involved |
-|---|---|---|---|
-| `sqrt` | `src/algorithms.rs` | **Medium** | Newton-Raphson iteration over the `Wad` domain |
-| `geometric_mean` | `src/algorithms.rs` | **Medium** | Mostly wiring: composes `ln`/`exp`, plus a small-`n` fast path |
-| `ln` | `src/algorithms.rs` | **High** | Range reduction (`ln(x) = k·ln(2) + ln(m)`) + Taylor series + error bounding |
-| `exp` | `src/algorithms.rs` | **High** | Range reduction (`exp(x) = 2^k · exp(r)`) + Taylor series + overflow guarding |
-
-Each has a matching `#[ignore]`d integration test in
-[`src/test.rs`](src/test.rs) sketching the expected input/output — remove the
-`#[ignore]` and fill in the assertions once your implementation lands.
+- **`ln` / `exp` precision.** Both are Taylor-series approximations; even
+  with rounded (not truncated) per-term division, error from the ~15-20
+  series terms compounds to within roughly ±20 ULP at `Wad` (1e18)
+  precision — about 1e-17 relative error, i.e. ~17 significant decimal
+  digits. `sqrt` (perfect squares) and `geometric_mean` (two values) are
+  exact by construction and don't share this bound. See the
+  `APPROX_TOLERANCE_ULP` tests in [`src/algorithms.rs`](src/algorithms.rs)
+  for the exact figures this is benchmarked against.
+- **`Wad::checked_div` overflow fallback.** The fast path (`self.0 * WAD`,
+  then divide) overflows `i128` once `self.0` exceeds a `Wad` real value of
+  ~170 — an ordinary magnitude for token accounting. `checked_div` falls
+  back to a divide-first decomposition that stays exact for operands of
+  comparable magnitude (the common case, e.g. inside `sqrt`'s
+  Newton-Raphson refinement), but still reports
+  [`MathError::Overflow`](src/errors.rs) rather than a wrong answer for
+  operands of wildly mismatched magnitude where even the fallback's
+  remainder term doesn't fit `i128`. A full 256-bit `mulDiv` (as e.g.
+  Uniswap's `FullMath` implements in Solidity) would close this gap
+  entirely; it's a meaningful chunk of work and hasn't been attempted here
+  yet.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow, coding
 conventions, and PR checklist.
