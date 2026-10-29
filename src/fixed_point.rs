@@ -318,4 +318,80 @@ mod tests {
     fn invalid_scale_is_rejected() {
         assert_eq!(scale_to(1, 0, MAX_SCALE + 1), Err(MathError::InvalidScale));
     }
+
+    #[test]
+    fn rad_checked_add_with_negative_operands_and_zero_crossing() {
+        // Adding two negatives
+        let a = Rad::from_raw(-3 * RAD);
+        let b = Rad::from_raw(-2 * RAD);
+        assert_eq!(a.checked_add(b).unwrap(), Rad::from_raw(-5 * RAD));
+
+        // Adding negative to positive crossing zero into positive territory
+        let neg = Rad::from_raw(-3 * RAD);
+        let pos = Rad::from_raw(5 * RAD);
+        assert_eq!(neg.checked_add(pos).unwrap(), Rad::from_raw(2 * RAD));
+
+        // Adding positive to negative crossing zero into negative territory
+        let small_pos = Rad::from_raw(2 * RAD);
+        let large_neg = Rad::from_raw(-5 * RAD);
+        assert_eq!(small_pos.checked_add(large_neg).unwrap(), Rad::from_raw(-3 * RAD));
+
+        // Adding exact negation yielding zero
+        let c = Rad::from_raw(-4 * RAD);
+        let d = Rad::from_raw(4 * RAD);
+        assert_eq!(c.checked_add(d).unwrap(), Rad::ZERO);
+
+        // Extreme negative overflow boundary
+        let min_rad = Rad::from_raw(i128::MIN);
+        let neg_one = Rad::from_raw(-1);
+        assert_eq!(min_rad.checked_add(neg_one), Err(MathError::Overflow));
+    }
+
+    #[test]
+    fn rad_checked_sub_with_negative_operands_and_zero_crossing() {
+        // Subtracting negative from negative
+        let a = Rad::from_raw(-5 * RAD);
+        let b = Rad::from_raw(-2 * RAD);
+        assert_eq!(a.checked_sub(b).unwrap(), Rad::from_raw(-3 * RAD));
+
+        // Subtracting positive from positive crossing zero into negative territory
+        let pos = Rad::from_raw(1 * RAD);
+        let larger_pos = Rad::from_raw(4 * RAD);
+        assert_eq!(pos.checked_sub(larger_pos).unwrap(), Rad::from_raw(-3 * RAD));
+
+        // Subtracting negative from positive (results in higher positive)
+        let pos_start = Rad::from_raw(2 * RAD);
+        let neg_sub = Rad::from_raw(-3 * RAD);
+        assert_eq!(pos_start.checked_sub(neg_sub).unwrap(), Rad::from_raw(5 * RAD));
+
+        // Subtracting positive from negative (results in more negative)
+        let neg_start = Rad::from_raw(-2 * RAD);
+        let pos_sub = Rad::from_raw(3 * RAD);
+        assert_eq!(neg_start.checked_sub(pos_sub).unwrap(), Rad::from_raw(-5 * RAD));
+
+        // Subtracting identical negative operand yielding zero
+        let same_neg = Rad::from_raw(-7 * RAD);
+        assert_eq!(same_neg.checked_sub(same_neg).unwrap(), Rad::ZERO);
+
+        // Extreme negative underflow boundary
+        let min_rad = Rad::from_raw(i128::MIN);
+        let pos_one = Rad::from_raw(1);
+        assert_eq!(min_rad.checked_sub(pos_one), Err(MathError::Underflow));
+    }
+
+    #[test]
+    fn rad_to_wad_negative_truncates_toward_zero() {
+        // Exact negative conversion
+        let exact_neg = Rad::from_raw(-5 * RAD);
+        assert_eq!(exact_neg.to_wad().unwrap(), Wad::from_raw(-5 * WAD));
+
+        // Fractional negative value: -1.999999... Rad must truncate to -1.0 Wad,
+        // confirming truncation rounds toward zero (not toward negative infinity / -2.0 Wad)
+        let fractional_neg = Rad::from_raw(-1 * RAD - 999_999_000_000_000_000);
+        assert_eq!(fractional_neg.to_wad().unwrap(), Wad::from_raw(-1 * WAD));
+
+        // Small negative fractional value < 1 Wad must truncate to 0 Wad
+        let small_neg_fraction = Rad::from_raw(-999_999_999_999_999_999);
+        assert_eq!(small_neg_fraction.to_wad().unwrap(), Wad::ZERO);
+    }
 }
